@@ -11,7 +11,6 @@
 
 use std::env;
 use std::fs;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -148,12 +147,12 @@ fn obtain_tarball(out_dir: &Path) -> PathBuf {
     );
     println!("cargo:warning=downloading {url}");
 
-    let resp = ureq::get(&url)
+    let mut resp = ureq::get(&url)
         .call()
         .unwrap_or_else(|e| panic!("failed to download {url}: {e}"));
-    let mut bytes = Vec::new();
-    resp.into_reader()
-        .read_to_end(&mut bytes)
+    let bytes = resp
+        .body_mut()
+        .read_to_vec()
         .expect("failed to read tarball body");
     fs::write(&dest, &bytes).expect("failed to write tarball");
     dest
