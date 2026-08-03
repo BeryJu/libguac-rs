@@ -28,16 +28,21 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
-#include <syslog.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 /*
- * Note: guacd_log_level is defined by the compiled-in log.c and declared
+ * Note: guacd_log_level is defined by our compiled-in shim/log.c and declared
  * `extern` via log.h, so we only assign to it here (in guac_embed_init) rather
  * than defining it. daemon.c is deliberately excluded (that is where the
- * listening socket lives).
+ * listening socket lives), and shim/log.c replaces guacd's own log.c so that
+ * log output is delivered to the host process over a pipe instead of syslog.
  */
+
+/* Implemented in shim/log.c. Control the write end of the log pipe that every
+ * log record (including those emitted by forked client processes) is sent to. */
+void guac_embed_log_set_fd(int fd);
+void guac_embed_log_close_fd(void);
 
 struct guac_embed_ctx {
 
@@ -47,17 +52,26 @@ struct guac_embed_ctx {
      */
     guacd_proc_map* map;
 
+    /**
+     * Read end of the log pipe, owned by the caller (handed to the Rust log
+     * reader thread). The matching write end lives in shim/log.c and is
+     * inherited by every forked client process. -1 if the pipe could not be
+     * created, in which case logging falls back to stderr.
+     */
+    int log_read_fd;
+
 };
 
 guac_embed_ctx* guac_embed_init(int log_level) {
 
-    /* Match daemon.c: set the max log level and open syslog. */
+    /* Match daemon.c: set the max log level. */
     guacd_log_level = log_level;
-    openlog(GUACD_LOG_NAME, LOG_PID, LOG_DAEMON);
 
     guac_embed_ctx* ctx = malloc(sizeof(guac_embed_ctx));
     if (ctx == NULL)
         return NULL;
+
+    ctx->log_read_fd = -1;
 
     ctx->map = guacd_proc_map_alloc();
     if (ctx->map == NULL) {
@@ -65,8 +79,24 @@ guac_embed_ctx* guac_embed_init(int log_level) {
         return NULL;
     }
 
+    /* Set up the log pipe. fds[0] is the read end returned to the caller;
+     * fds[1] is the write end guacd (and every forked client) logs into. A
+     * failure here is non-fatal: shim/log.c falls back to stderr while its
+     * write fd is unset. */
+    int fds[2];
+    if (pipe(fds) == 0) {
+        guac_embed_log_set_fd(fds[1]);
+        ctx->log_read_fd = fds[0];
+    }
+
     return ctx;
 
+}
+
+int guac_embed_log_fd(guac_embed_ctx* ctx) {
+    if (ctx == NULL)
+        return -1;
+    return ctx->log_read_fd;
 }
 
 int guac_embed_connect(guac_embed_ctx* ctx) {
@@ -120,6 +150,12 @@ void guac_embed_shutdown(guac_embed_ctx* ctx) {
 
     if (ctx == NULL)
         return;
+
+    /* Close the parent's write end of the log pipe. Once all forked children
+     * have also exited (closing their inherited copies), the reader thread on
+     * the Rust side sees EOF and stops. The read end is owned by that thread,
+     * so it is not closed here. */
+    guac_embed_log_close_fd();
 
     guacd_proc_map_free(ctx->map);
     free(ctx);

@@ -37,6 +37,13 @@ let n = conn.read(&mut buf)?;         // server "args" instruction, etc.
 
 - **Start** (`guac_embed_init`) allocates guacd's process map and sets up
   logging. No socket, no bind, no `accept()` loop.
+- **Logging** is routed to Rust's [`log`](https://docs.rs/log) crate under the
+  `guacd` target, instead of guacd's usual syslog/stderr. A shim `log.c`
+  replaces guacd's own `log.c`, framing each message onto a pipe; a background
+  reader thread drains it and re-emits via `log`. The pipe hop is what keeps
+  the forked protocol clients from calling into the host logger directly —
+  unsafe across `fork()` in a multithreaded process. Install any `log` logger
+  (`env_logger`, `tracing`, …) to see output.
 - **Connect** (`guac_embed_connect`) creates an `AF_UNIX` socketpair, hands one
   end to guacd's stock `guacd_connection_thread`, and returns the other end.
 - guacd reads the `select` instruction, **forks** a child process that

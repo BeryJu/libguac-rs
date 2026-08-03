@@ -6,9 +6,45 @@
 //! server (run with `cargo test -- --ignored --test-threads=1`).
 
 use std::io::{Read, Write};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use guacd::{Connection, Guacd, LogLevel};
+use log::{Level, Log, Metadata, Record};
+
+/// Log records captured from the `guacd` target, proving guacd's C-side log
+/// output is routed through the [`log`] crate.
+static CAPTURED: Mutex<Vec<(Level, String)>> = Mutex::new(Vec::new());
+
+struct CaptureLogger;
+
+impl Log for CaptureLogger {
+    fn enabled(&self, _: &Metadata) -> bool {
+        true
+    }
+    fn log(&self, record: &Record) {
+        if record.target() == "guacd" {
+            CAPTURED
+                .lock()
+                .unwrap()
+                .push((record.level(), record.args().to_string()));
+        }
+    }
+    fn flush(&self) {}
+}
+
+/// Installs [`CaptureLogger`] as the process logger exactly once. Uses
+/// `set_logger` with a `'static` instance so the `log` crate's `std` feature
+/// (which `set_boxed_logger` needs) is not required.
+static CAPTURE_LOGGER: CaptureLogger = CaptureLogger;
+
+fn install_capture_logger() {
+    static INIT: OnceLock<()> = OnceLock::new();
+    INIT.get_or_init(|| {
+        log::set_logger(&CAPTURE_LOGGER).expect("install capture logger");
+        log::set_max_level(log::LevelFilter::Trace);
+    });
+}
 
 /// Encodes a single Guacamole protocol instruction:
 /// `LEN.ELEM,LEN.ELEM,...;` where LEN is the element's character count.
@@ -62,8 +98,10 @@ fn read_until(conn: &mut Connection, needle: &str) -> String {
 
 #[test]
 fn handshake_forks_vnc_plugin_without_a_listening_socket() {
+    install_capture_logger();
+
     let listeners_before = listening_tcp_sockets();
-    let guac = Guacd::start(LogLevel::Info).expect("start guacd");
+    let guac = Guacd::start(LogLevel::Debug).expect("start guacd");
 
     // Starting guacd must not open any listening TCP socket (unlike the real
     // guacd daemon, which binds port 4822).
@@ -87,6 +125,23 @@ fn handshake_forks_vnc_plugin_without_a_listening_socket() {
     assert!(
         resp.contains("args"),
         "expected an \"args\" handshake instruction, got: {resp:?}"
+    );
+
+    // guacd logs connection lifecycle events (e.g. selecting the protocol and
+    // forking the client). Those come from C, are framed onto a pipe, and are
+    // re-emitted by the background reader thread through the `log` crate, so
+    // give that async hop a moment to catch up.
+    let mut captured = Vec::new();
+    for _ in 0..100 {
+        captured = CAPTURED.lock().unwrap().clone();
+        if !captured.is_empty() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(
+        !captured.is_empty(),
+        "expected guacd log records to arrive via the log crate, got none"
     );
 }
 

@@ -33,6 +33,27 @@ typedef struct guac_embed_ctx guac_embed_ctx;
 guac_embed_ctx* guac_embed_init(int log_level);
 
 /**
+ * Returns the read end of the log pipe for the given context. guacd's log
+ * output -- including messages emitted by forked protocol-client processes --
+ * is framed and written to the matching write end. Each record is:
+ *
+ *     [level: 1 byte][length: 2 bytes, little-endian][message: length bytes]
+ *
+ * where `level` is a guac_client_log_level (3=ERROR, 4=WARNING, 6=INFO,
+ * 7=DEBUG, 8=TRACE) and `message` is UTF-8 text with no trailing newline. The
+ * caller is expected to read records from this fd (e.g. on a dedicated thread)
+ * and forward them to its own logging facility, and takes ownership of the fd.
+ *
+ * @param ctx
+ *     The context returned by guac_embed_init().
+ *
+ * @return
+ *     The read-end file descriptor, or -1 if the pipe could not be created (in
+ *     which case guacd logs to stderr instead).
+ */
+int guac_embed_log_fd(guac_embed_ctx* ctx);
+
+/**
  * Creates a new in-process Guacamole connection. Internally this allocates an
  * AF_UNIX socketpair, hands one end to a detached guacd connection thread
  * (which reads the "select" instruction, forks the protocol-specific client

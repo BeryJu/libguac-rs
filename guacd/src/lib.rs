@@ -28,6 +28,15 @@
 //! guacd forks a child that `dlopen`s `libguac-client-<protocol>.so` and runs
 //! the protocol client, communicating over an `AF_UNIX` socketpair whose other
 //! end is the [`Connection`].
+//!
+//! # Logging
+//!
+//! guacd's log output — including messages emitted by the forked protocol
+//! clients — is routed to the [`log`] crate facade under the `guacd` target,
+//! rather than to syslog/stderr as the standalone daemon does. Install any
+//! `log`-compatible logger (e.g. `env_logger`, `tracing`) in the host process
+//! to see it. The [`LogLevel`] passed to [`Guacd::start`] caps which messages
+//! guacd produces at the source; your logger's own filter applies on top.
 
 mod connection;
 mod instance;
@@ -36,7 +45,10 @@ pub use connection::Connection;
 pub use instance::Guacd;
 
 /// Maximum severity of log messages guacd should emit. Values match
-/// guacamole's `guac_client_log_level` enum.
+/// guacamole's `guac_client_log_level` enum. Messages that pass this filter
+/// are forwarded to the [`log`] crate under the `guacd` target (`Error` →
+/// [`log::Level::Error`], `Warning` → `Warn`, `Info` → `Info`, `Debug` →
+/// `Debug`, `Trace` → `Trace`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
 pub enum LogLevel {

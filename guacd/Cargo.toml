@@ -9,4 +9,5 @@ description = "Embed Apache guacamole-server (guacd) in-process: start it withou
 [dependencies]
 guacd-sys = { path = "../guacd-sys", version = "0.1.0" }
 libc.workspace = true
+log.workspace = true
 thiserror.workspace = true

@@ -76,13 +76,16 @@ fn main() {
         .include(install.join("include")) // guacamole/*.h
         .include("shim");
 
-    for file in ["connection.c", "proc.c", "proc-map.c", "log.c", "move-fd.c"] {
+    // guacd's own log.c (syslog + stderr) is deliberately excluded; shim/log.c
+    // provides the same symbols but delivers log output to the host over a pipe.
+    for file in ["connection.c", "proc.c", "proc-map.c", "move-fd.c"] {
         build.file(srcroot.join("src").join("guacd").join(file));
     }
     // guacd's proc-map depends on guac_common_list, which is part of libguac's
     // internal (non-exported) common library, so we compile it in directly.
     build.file(srcroot.join("src").join("common").join("list.c"));
     build.file("shim/shim.c");
+    build.file("shim/log.c");
 
     build
         .flag_if_supported("-Wno-unused-parameter")
@@ -109,6 +112,9 @@ fn main() {
         .header("wrapper.h")
         .allowlist_function("guac_embed_.*")
         .allowlist_type("guac_embed_ctx")
+        // Don't copy the C doc comments into the bindings: their indented
+        // fragments (e.g. the log record layout) get parsed as Rust doctests.
+        .generate_comments(false)
         .generate()
         .expect("unable to generate bindings for shim.h");
     bindings
@@ -118,6 +124,7 @@ fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=shim/shim.h");
     println!("cargo:rerun-if-changed=shim/shim.c");
+    println!("cargo:rerun-if-changed=shim/log.c");
     println!("cargo:rerun-if-env-changed=GUACAMOLE_SERVER_TARBALL");
 }
 
