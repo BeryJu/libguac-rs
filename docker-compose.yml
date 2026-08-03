@@ -1,0 +1,20 @@
+# Convenience harness for iterating on guac-rs inside the build container.
+#
+#   docker compose run --rm build                  # cargo test (default)
+#   docker compose run --rm build cargo build       # or any other command
+#   docker compose run --rm build cargo clippy --all-targets
+#
+# Cargo's registry and the target dir are cached in named volumes so repeated
+# builds (which recompile guacamole-server) stay fast.
+services:
+  build:
+    build: .
+    volumes:
+      - .:/src
+      - cargo-registry:/usr/local/cargo/registry
+      - target:/src/target
+    command: cargo test -- --nocapture
+
+volumes:
+  cargo-registry:
+  target:

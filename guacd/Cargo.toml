@@ -1,0 +1,12 @@
+[package]
+name = "guacd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Embed Apache guacamole-server (guacd) in-process: start it without a listening socket, open connections, and read/write the Guacamole protocol"
+
+[dependencies]
+guacd-sys = { path = "../guacd-sys", version = "0.1.0" }
+libc.workspace = true
+thiserror.workspace = true

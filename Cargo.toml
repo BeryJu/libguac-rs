@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["guacd-sys", "guacd"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/goauthentik/guac-rs"
+description = "Embed Apache guacamole-server (guacd) in-process with Rust bindings"
+
+[workspace.dependencies]
+libc = "0.2"
+thiserror = "1"
