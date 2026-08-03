@@ -12,7 +12,7 @@ build = "build.rs"
 libc.workspace = true
 
 [build-dependencies]
-bindgen = "0.69"
+bindgen = "0.72"
 cc = "1"
 sha2 = "0.11"
 flate2 = "1"
