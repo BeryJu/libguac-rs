@@ -16,6 +16,14 @@ use log::{Level, Log, Metadata, Record};
 /// output is routed through the [`log`] crate.
 static CAPTURED: Mutex<Vec<(Level, String)>> = Mutex::new(Vec::new());
 
+/// Serializes tests that start a [`Guacd`] instance: only one may be live in
+/// the process at a time, but cargo runs tests in this file concurrently by
+/// default. Acquire this before `Guacd::start` and hold it until `guac` (and
+/// thus the instance) is dropped. A `tokio::sync::Mutex` rather than a `std`
+/// one, since the async tests hold the guard across `.await` points; the
+/// plain sync test uses [`tokio::sync::Mutex::blocking_lock`] instead.
+static GUACD_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 struct CaptureLogger;
 
 impl Log for CaptureLogger {
@@ -99,6 +107,7 @@ fn read_until(conn: &mut Connection, needle: &str) -> String {
 #[test]
 fn handshake_forks_vnc_plugin_without_a_listening_socket() {
     install_capture_logger();
+    let _guard = GUACD_LOCK.blocking_lock();
 
     let listeners_before = listening_tcp_sockets();
     let guac = Guacd::start(LogLevel::Debug).expect("start guacd");
@@ -191,5 +200,99 @@ fn full_vnc_connect_streams_display_updates() {
     assert!(
         stream.contains("sync") || stream.contains("img") || stream.contains("blob"),
         "expected display updates, got: {stream:?}"
+    );
+}
+
+/// Same handshake as [`handshake_forks_vnc_plugin_without_a_listening_socket`],
+/// but driven over the tokio-backed [`guacd::AsyncConnection`] instead of the
+/// blocking [`Connection`], proving `Connection::into_tokio` produces a
+/// working `AsyncRead`/`AsyncWrite` stream.
+#[cfg(feature = "tokio")]
+#[tokio::test]
+async fn async_handshake_forks_vnc_plugin() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::time::{Duration, timeout};
+
+    let _guard = GUACD_LOCK.lock().await;
+    let guac = Guacd::start(LogLevel::Debug).expect("start guacd");
+    let conn = guac.connect().expect("open connection");
+    let mut conn = conn.into_tokio().expect("convert to tokio connection");
+
+    conn.write_all(&instruction(&["select", "vnc"]))
+        .await
+        .unwrap();
+    conn.flush().await.unwrap();
+
+    let resp = timeout(Duration::from_secs(20), async {
+        let mut acc = Vec::new();
+        let mut buf = [0u8; 4096];
+        loop {
+            let n = conn.read(&mut buf).await.unwrap();
+            if n == 0 {
+                break;
+            }
+            acc.extend_from_slice(&buf[..n]);
+            if String::from_utf8_lossy(&acc).contains("args") {
+                break;
+            }
+        }
+        String::from_utf8_lossy(&acc).into_owned()
+    })
+    .await
+    .expect("timed out waiting for args instruction");
+
+    assert!(
+        resp.contains("args"),
+        "expected an \"args\" handshake instruction, got: {resp:?}"
+    );
+}
+
+/// [`guacd::AsyncConnection::into_split`] should hand back independent
+/// read/write halves that can be driven from separate tasks, mirroring the
+/// blocking [`Connection::try_clone`] use case.
+#[cfg(feature = "tokio")]
+#[tokio::test]
+async fn async_connection_can_be_split_across_tasks() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::time::Duration;
+
+    let _guard = GUACD_LOCK.lock().await;
+    let guac = Guacd::start(LogLevel::Debug).expect("start guacd");
+    let conn = guac.connect().expect("open connection");
+    let conn = conn.into_tokio().expect("convert to tokio connection");
+    let (mut read_half, mut write_half) = conn.into_split();
+
+    let writer = tokio::spawn(async move {
+        write_half
+            .write_all(&instruction(&["select", "vnc"]))
+            .await
+            .unwrap();
+        write_half.flush().await.unwrap();
+    });
+
+    let reader = tokio::spawn(async move {
+        let mut acc = Vec::new();
+        let mut buf = [0u8; 4096];
+        loop {
+            let n = tokio::time::timeout(Duration::from_secs(20), read_half.read(&mut buf))
+                .await
+                .expect("timed out waiting for args instruction")
+                .unwrap();
+            if n == 0 {
+                break;
+            }
+            acc.extend_from_slice(&buf[..n]);
+            if String::from_utf8_lossy(&acc).contains("args") {
+                break;
+            }
+        }
+        String::from_utf8_lossy(&acc).into_owned()
+    });
+
+    writer.await.unwrap();
+    let resp = reader.await.unwrap();
+    assert!(
+        resp.contains("args"),
+        "expected an \"args\" handshake instruction, got: {resp:?}"
     );
 }

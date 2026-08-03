@@ -37,10 +37,22 @@
 //! `log`-compatible logger (e.g. `env_logger`, `tracing`) in the host process
 //! to see it. The [`LogLevel`] passed to [`Guacd::start`] caps which messages
 //! guacd produces at the source; your logger's own filter applies on top.
+//!
+//! # Async / tokio
+//!
+//! [`Guacd::start`] and [`Guacd::connect`] are cheap, non-blocking calls (a
+//! shim init and a `socketpair`+`fork`), so they can be called directly from
+//! async code without a `spawn_blocking`. The resulting [`Connection`],
+//! however, is a blocking [`std::io::Read`]/[`Write`] stream; enable the
+//! `tokio` feature and call [`Connection::into_tokio`] to convert it into an
+//! [`AsyncConnection`] implementing [`tokio::io::AsyncRead`] /
+//! [`tokio::io::AsyncWrite`] instead.
 
 mod connection;
 mod instance;
 
+#[cfg(feature = "tokio")]
+pub use connection::AsyncConnection;
 pub use connection::Connection;
 pub use instance::Guacd;
 

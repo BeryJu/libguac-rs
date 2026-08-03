@@ -11,3 +11,10 @@ guacd-sys = { path = "../guacd-sys", version = "0.1.0" }
 libc.workspace = true
 log.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, optional = true, features = ["net"] }
+
+[features]
+tokio = ["dep:tokio"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "time", "io-util", "sync"] }

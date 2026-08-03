@@ -13,3 +13,4 @@ description = "Embed Apache guacamole-server (guacd) in-process with Rust bindin
 libc = "0.2"
 log = "0.4"
 thiserror = "1"
+tokio = "1"
