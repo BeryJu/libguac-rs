@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    # guacd-sys only builds on Linux x86_64/aarch64; this workflow covers the
+    # x86_64 GitHub-hosted runner.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config autoconf automake libtool libtool-bin \
+            clang libclang-dev \
+            libcairo2-dev libjpeg62-turbo-dev libpng-dev libwebp-dev \
+            libpango1.0-dev uuid-dev libossp-uuid-dev libssl-dev \
+            libvncserver-dev \
+            freerdp2-dev libwinpr2-dev \
+            libssh2-1-dev
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt,clippy
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace --verbose
+
+      - name: Test
+        run: cargo test --workspace --verbose

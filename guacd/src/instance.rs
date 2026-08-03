@@ -134,10 +134,10 @@ fn spawn_log_reader(fd: RawFd) {
 /// Maps a guacamole `guac_client_log_level` to a [`log::Level`].
 fn guac_level_to_log(level: u8) -> log::Level {
     match level {
-        3 => log::Level::Error,   // GUAC_LOG_ERROR
-        4 => log::Level::Warn,    // GUAC_LOG_WARNING
+        3 => log::Level::Error,    // GUAC_LOG_ERROR
+        4 => log::Level::Warn,     // GUAC_LOG_WARNING
         5 | 6 => log::Level::Info, // GUAC_LOG_INFO (5 is unused by guacd)
-        7 => log::Level::Debug,   // GUAC_LOG_DEBUG
-        _ => log::Level::Trace,   // GUAC_LOG_TRACE (8) and anything higher
+        7 => log::Level::Debug,    // GUAC_LOG_DEBUG
+        _ => log::Level::Trace,    // GUAC_LOG_TRACE (8) and anything higher
     }
 }

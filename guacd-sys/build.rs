@@ -163,7 +163,10 @@ fn verify_sha256(path: &Path) {
     use sha2::{Digest, Sha256};
     let bytes = fs::read(path).expect("failed to read tarball for hashing");
     let digest = Sha256::digest(&bytes);
-    let got = digest.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let got = digest
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
     if got != SHA256 {
         panic!(
             "SHA-256 mismatch for {}\n  expected {SHA256}\n  got      {got}",
