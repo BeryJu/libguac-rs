@@ -10,9 +10,17 @@ env:
 
 jobs:
   build-and-test:
-    # guacd-sys only builds on Linux x86_64/aarch64; this workflow covers the
-    # x86_64 GitHub-hosted runner.
-    runs-on: ubuntu-latest
+    # guacd-sys only supports Linux x86_64/aarch64; matrix covers both via
+    # GitHub's native amd64 and arm64 hosted runners.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            os: ubuntu-latest
+          - arch: arm64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
 
