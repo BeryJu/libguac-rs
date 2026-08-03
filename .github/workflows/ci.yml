@@ -36,6 +36,17 @@ jobs:
             freerdp2-dev libwinpr2-dev \
             libssh2-1-dev
 
+      - name: Prepare FreeRDP plugin directory
+        # guacamole-server's RDP plugins (libguac-common-svc-client.so etc.)
+        # must land in FreeRDP's own compiled-in addin directory to be found
+        # at runtime (FreeRDP resolves this path itself; guacd-sys can't
+        # redirect it). Nothing owns this directory by default, so `make
+        # install` (run as the unprivileged build user) can't create it.
+        run: |
+          dir="$(pkg-config --variable=libdir freerdp2)/freerdp2"
+          sudo mkdir -p "$dir"
+          sudo chown "$(id -u):$(id -g)" "$dir"
+
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
